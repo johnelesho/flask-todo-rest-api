@@ -1,7 +1,9 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
 import uuid
 from werkzeug.security import generate_password_hash, check_password_hash
+import jwt
+import datetime
 
 
 app = Flask(__name__)
@@ -24,6 +26,8 @@ class Todo(db.Model):
     text = db.Column(db.String(50), unique=True, nullable=False)
     complete = db.Column(db.Boolean, nullable=False)
     user_id = db.Column(db.Integer, default=False, nullable=False)
+
+
 
 #Setting up the user routes that only admins who have logged in have access to
 @app.route('/user/', methods=['GET'])
@@ -86,6 +90,34 @@ def delete_user(user_id):
         return jsonify({"user": "User Deleted"})
     else:
         return jsonify({"user": "User not found"})
+
+
+#Login anf get the authorization
+@app.route('/login')
+def login():
+    auth = request.authorization
+
+# if there is no authentication information
+    if not auth or not auth.username or not auth.password:
+        return make_response('Authentication Information not available, Could not verify', 401, {'WWW-Authentication': 'Basic realm="Login required"'})
+
+# if the authenticated details[username] is in the database 
+    user = User.query.filter_by(username=auth.username).first()
+    if not user:
+         return make_response('User not verified', 401, {'WWW-Authentication': 'Basic realm="Login required"'})
+
+# if the authenticated details[password] matches 
+    if check_password_hash(user.password, auth.password):
+        token = jwt.encode(
+            {
+                "public_id": user.public_id, 
+                "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=30)
+            },
+            app.config['SECRET_KEY']
+            )
+        return jsonify({'token': token.decode('UTF-8')})
+
+    return make_response('User not finally verified', 401, {'WWW-Authentication': 'Basic realm="Login required"'})
 
 if __name__ == "__main__":
     db.create_all()
